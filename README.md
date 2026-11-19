@@ -1,4 +1,4 @@
-# Can a few attention heads fix long-distance en/ett agreement in Swedish?
+# Can few attention heads fix long-distance en/ett agreement in Swedish?
 
 *A small CPU-only experiment for the SE.LLMA / WASP candidate assignment: weight-space programming applied to a Swedish language model.*
 
