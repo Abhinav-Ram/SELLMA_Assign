@@ -1,135 +1,75 @@
-# swedit: targeted attention-head edits vs prompting and fine-tuning on Swedish en/ett agreement
+# Can a few attention heads fix long-distance en/ett agreement in Swedish?
 
-**Claim under test.** Can a targeted attention-head edit improve *long-distance* en/ett agreement in
-Swedish, but not *memorised* noun gender, compared to random edits and to prompting and fine-tuning?
+*A small CPU-only experiment for the SE.LLMA / WASP candidate assignment: weight-space programming applied to a Swedish language model.*
 
-Prediction (pre-registered here, before any real run): the targeted edit beats the 95th percentile of
-same-size random edits on `long_distance` test items, stays inside the regression budget
-(Swedish per-token NLL +2%, lexical/local accuracy unchanged; English control -2 points only if enabled), and shows **no** gain on `lexical` items. It would be
-falsified by: landing inside the random-edit distribution; improving the English control as much as Swedish (only if enabled);
-prompting or fine-tuning matching the gain with fewer regressions; or a near-chance baseline
-(nothing to unblock). A "no gain" result only counts if the CIs are tight enough to exclude an effect of
-interest; the report prints a rough minimum detectable effect.
+## The hook
 
-## Status: what was and was not verified
+I don't speak Swedish, and that is part of why I picked this. Swedish has two noun genders, "en" and "ett", and which one a noun takes is mostly arbitrary: *en bil*, *ett hus*. It also spreads: the adjective and the pronoun have to match ("huset är stort", "bilen är stor"). English has nothing like it, and English is where most LLM research happens.
 
-* **Verified here (CPU sandbox, tiny random models):** the code runs end to end; 12 unit tests pass;
-  the weight-slice edit gives the same logits as an independent hook-based ablation for both a GPT-2
-  layout and a Llama-style layout with grouped-query attention; edits restore weights exactly;
-  scoring is batch/padding invariant; dev/test items are disjoint; two runs with the same seed
-  produce byte-identical summaries.
-* **NOT verified:** anything on the real model. The sandbox could not reach Hugging Face, so the
-  GPT-SW3 tokenizer path (`add_special_tokens=False`, BOS handling), real-model runtime, and the
-  scientific outcome are untested. `results/smoke` uses a random model and is **meaningless**.
-* Builtin noun lexicon and all item frames **need native-speaker review** before results are reported.
+## Hypothesis
 
-## Architecture
+**A targeted edit to at most 5 attention heads improves long-distance en/ett agreement in a Swedish model, but not memorised noun gender, and does so better than random edits, few-shot prompting or a small fine-tune.**
 
-```
-configs/*.yaml ──► run_experiment.py (orchestrator, fixed seeds, writes everything to out_dir)
-                      │
-   lexicon.py ─► items.py ─► items.jsonl      nouns split into DISJOINT dev/test; per-split frames
-   (builtin | UD)    │          types: lexical, local, long_distance (+ optional en_sv_agree English control)
-                      ▼
-   models.py  load model + tokenizer, find each layer's attention output projection
-   scoring.py log P(sentence); margin = logP(gold) - logP(wrong); NLL on held-out Swedish text
-                      │
-   A0 baseline ───────┤ evaluate.py on TEST
-   diagnose.py (DEV only): zero-ablate every head -> verify top-M candidate ops -> greedy top-k
-   edits.py     EditSpec (JSON) -> scale a head's slice of the output projection (a real weight edit)
-   A2 targeted  ──────┤ apply spec, evaluate on TEST
-   A1 random    ──────┤ n_random specs: same k and same alphas, random heads (uniform | layer_matched)
-   P  prompting ──────┤ prompting.py: few-shot correct DEV sentences as context, weights unchanged
-   F  fine-tune ──────┘ finetune.py: LoRA on the SAME dev sentences (standard LM loss), several seeds
-                      ▼
-   stats.py + report.py  balanced accuracy, bootstrap CIs, paired diffs, McNemar, empirical p vs random
-                         -> summary.json, summary.md, random_vs_targeted.png
-```
+Why en/ett if it is mostly memorised? Because that splits the behaviour in two. The memorised part (*ett hus*) lives in the model's stored facts. The rule-like part, carrying the noun's gender across other words ("Huset, som vi såg i går, var **stort**"), has to be moved by attention. So an attention-head edit should help the second and leave the first alone. The underlying question is **unmasking**: does an edit add a skill, or remove something that stops the model using a skill it already has?
 
-Design choices that matter for validity:
-* **Balanced accuracy** (mean of en-gold and ett-gold items) plus per-group accuracy: a model that always
-  prefers "en"/the common-gender form scores 100%/0% by group and exactly 0.5 balanced (this happens with
-  an untrained model; see `results/smoke`).
-* **Held-out evaluation:** diagnostics, few-shot examples and fine-tuning see only DEV nouns and frames;
-  TEST nouns and frames never appear in them (`check_disjoint` enforces it).
-* **Diagnostics are model feedback**, not weight reading. The assignment's distinction between reasoning
-  about weights and optimising edits through model feedback therefore applies: this edit selection is the
-  latter. A weights-only selector is a natural extension arm (see Next steps).
-* Fine-tuning gets the same dev sentences as the edit but only the *correct* ones; a pair-contrastive loss
-  would give it the same wrong/right information and is a listed extension.
+## What I did
+
+- **Model:** `flax-community/swe-gpt-wiki` (GPT-2 small size, 124M parameters, Swedish Wikipedia), revision `c7c82ff9f0b9fba9da6278f67a2d594308b5ad9e`. CPU only, seed 1234.
+- **Items:** minimal pairs, scored by which sentence the model finds more likely. Three types: **lexical** (*ett hus* vs *en hus*), **local** (*ett stort hus* vs *ett stor hus*), **long-distance** (noun, then a clause, then the adjective). Nouns come from UD Swedish-Talbanken (513 nouns, commit `0185ae1`), split into separate dev (60 items per type) and test (100 per type) sets, so no noun appears in both.
+- **Metric:** balanced accuracy (mean of en-gold and ett-gold items), because a model that always says "en" would otherwise look fine. Regression check: per-token loss on 50 held-out real Swedish sentences, plus lexical and local accuracy.
+
+*Table 1. The arms.*
+
+| Arm | What it is |
+|---|---|
+| Baseline | Model unchanged |
+| **Targeted edit** | Zero out each of the 144 heads in turn on dev items, verify the top 30, keep the best 5 (gain on dev minus a fluency penalty). A head is scaled down (0) or up (1.5). 245,760 weights, 0.20% of the model |
+| Random edits | 20 edits of the same size and scaling on random heads |
+| Prompting | 8 correct dev sentences as context, no weight change. Two versions: mixed types, and long-distance only |
+| Fine-tune | LoRA (rank 8, 10 epochs, 3 seeds) on the same 60 dev sentences |
+
+## Results
+
+*Table 2. Test-set balanced accuracy (100 items per type) and change in Swedish loss (lower is better).*
+
+| Arm | Lexical | Local | **Long-distance** | Δ loss |
+|---|---|---|---|---|
+| Baseline | 0.98 | 0.98 | **0.67** | 0 |
+| Targeted edit | 0.96 | 0.99 | **0.75** | −0.19 |
+| Random edits (mean of 20) | 0.96 | 0.96 | 0.67 (p95 0.71) | +0.47 |
+| Prompting, mixed | 0.97 | 0.97 | 0.68 | 0 |
+| Prompting, long-distance only | 0.36 | 0.58 | 0.62 | 0 |
+| Fine-tune (3 seeds) | 0.97 | 0.99 | **0.80** (0.79–0.82) | −0.76 |
+
+*Per-group accuracy on long-distance items (en / ett): baseline 0.80 / 0.54, edit 0.84 / 0.66, prompting 0.84 / 0.52. The model starts out with an "en" bias, and the edit mostly lifts the ett side.*
+
+**What I read from it.**
+- The baseline passes the sanity check: the model gets lexical and local right (0.98) and fails at long distance (0.67), so there is a failure to fix.
+- The edit gains 8 points and beats the 95th percentile of random edits (p = 0.048, which is the smallest p-value 20 random draws can give). That is suggestive, not conclusive: with 100 items, the smallest difference I can reliably detect is about 20 points.
+- It did not hurt anything: lexical is unchanged (0.96 vs 0.98 is 1–2 items, and lexical was at ceiling, so this half is only weakly tested), and Swedish loss improved, while random edits made it worse.
+- **Fine-tuning did better (0.80 vs 0.75)**, with a larger fluency gain. This triggers one of my own stated falsifiers: "fine-tuning matches the gain with fewer regressions". Mixed prompting did nothing here. Prompting with long-distance sentences only broke lexical (0.36), which is a real effect of that context, not a bug.
+
+**On unmasking.** The model already handles local agreement (0.98), and the edit lifts the previously weak ett side. That fits "the edit removes a failure" better than "the edit adds a skill", but I did not look at what the five heads do, so this is an interpretation, not something I showed.
+
+## Recommendation
+
+1. For SE.LLMA, use this as an **evaluation recipe**: minimal-pair agreement probes split by distance, balanced accuracy with per-group numbers, and a fluency check. It found a concrete, explainable failure with almost no compute.
+2. For **fixing** it, prefer a small fine-tune at this scale. Head edits are cheap and specific, but here they did not beat conventional training.
+3. Before betting on head edits, replicate on a stronger Swedish model (GPT-SW3), with more seeds, natural sentences, and an inspection of what the edited heads attend to.
+
+## Caveats to remember
+
+One small model, one seed, 100 items per type. Template sentences built from 1970s newspaper nouns are often odd. The frames and nouns were **not reviewed by a native Swedish speaker**. I changed the design after seeing earlier development runs on a smaller hand-written noun list (dropped an English control the Swedish-only model could not do, added a second prompting variant, lengthened the fine-tune from 3 to 10 epochs). Those runs pointed the same way (+8 and +11 points for the edit), but this is development, not independent replication. Edits touch attention heads only, so memorised facts in other layers were never tested.
 
 ## Reproduce
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt && pip install -e .
-PYTHONPATH=src pytest -q                                   # unit tests, offline
-python -m swedit.run_experiment --config configs/smoke.yaml    # offline plumbing check (random model)
-
-# real run (needs Hugging Face access)
-./scripts/download_ud.sh                                    # optional: real noun lexicon (set REF to a tag)
-# edit configs/default.yaml: model.revision = <commit hash>; data.source = ud; data.ud_paths = [...]
-python -m swedit.run_experiment --config configs/default.yaml
+python -m pytest -q
+python -m swedit.run_experiment --config configs/default.yaml   # ~5 min on a laptop CPU
 ```
-Outputs in `out_dir`: `manifest.json` (config, hash, versions, git SHA, model commit), `items.jsonl`,
-`diagnostics.json` (full ablation table), `edit_spec.json`, `prompt_shots.json`, `per_item/*.json`
-(every margin for every arm), `summary.json`, `summary.md`, plot.
+Results are in `results/swe_gpt_wiki/` (`summary.md`, `summary.json`, `edit_spec.json`, `manifest.json`, `environment.txt`). Seed, model revision and data commit are pinned in `configs/default.yaml` and the manifest. Different hardware or library versions can shift numbers slightly. UD data: CC BY-SA 4.0.
 
-Reproducibility: one `seed` drives splits, sampling, random edits (`sub_seed(seed, "random_edit", i)`)
-and fine-tune seeds. Pin `model.revision`, UD `REF`, and record `pip freeze`. CPU matmul order can in
-principle differ across machines; same-machine reruns were bit-identical in the smoke test.
+## AI usage
 
-Hand- or LLM-written edits: `--edit-spec my_edit.json` skips selection and evaluates that spec
-(format: `{"ops": [{"layer": 7, "head": 3, "alpha": 1.5}]}`; `alpha` 0 ablates, >1 amplifies), validated against the budget.
-`--reuse-diagnostics` reloads the ablation table so the slow sweep is not repeated.
-
-## Models, data, licences
-
-* Model: `AI-Sweden-Models/gpt-sw3-126m` (GPT-2 architecture). Hugging Face lists its licence as "other"
-  (a modified RAIL licence): **read it before publishing anything derived**; this repo never redistributes
-  weights, it only references id + revision. Alternatives with clearer terms: Qwen3-0.6B (Apache 2.0, multilingual).
-* Noun genders: UD Swedish-Talbanken (CC BY-SA 4.0) annotates `Gender=Com/Neut`; derived lexicons inherit
-  share-alike. Talbanken text is from the 1970s, so treat it as a lexicon source, not as natural modern text.
-* Items are synthetic templates (no third-party text). Fluency check uses 16 hand-written sentences by default
-  (`data.ppl_text_path` for a larger set).
-
-## Known limitations
-
-* Template items are not natural text; adjective/noun combinations can be odd ("ett vackert ägg").
-* Zero-ablation takes the model off-distribution; amplification is selected heuristically then verified on dev.
-* Edits are head-level only. Lexical gender knowledge likely lives in embeddings/MLPs, so a null on
-  `lexical` does not show memorised facts are uneditable (MLP-level editing is a different experiment).
-* With 100 items per type, effects below roughly 10 points are hard to detect; report CIs, not just p-values.
-* The English control is off by default (Swedish-only models cannot do English); it has only 48 distinct items per split.
-* Regression text is 86 hand-written Swedish sentences (even lines dev, odd lines test); have a native speaker skim it.
-* The prompting arm is reported twice: `prompt` (mixed Swedish dev shots) and `prompt_target` (long-distance shots only).
-* Old `diagnostics.json` files use older key names: do not use `--reuse-diagnostics` across this change.
-* `configs/qwen3_0p6b.yaml` is untested on the real model.
-* Runtime estimates are unmeasured: the ablation sweep is (layers x heads) x dev items x 2 sentences
-  forward passes; reduce `n_dev` / `top_m` / `n_random` if slow.
-
-## Next steps (not implemented)
-
-weights-only head selection arm; LLM-written edit spec from the diagnostics table (with a
-shuffled-table control); pair-contrastive fine-tuning; MLP-level edit; second model size.
-
-## Multi-seed run and environment record
-
-```bash
-export PYTHONPATH=src
-bash scripts/run_seeds.sh configs/default.yaml 1234 1235 1236   # one folder per seed + aggregate.txt + environment.txt
-bash scripts/freeze_env.sh results/environment.txt              # pip freeze, python, platform, git sha
-```
-The seed changes the noun split, the sampled items, the heads chosen and the random edits.
-`n_test: 200` gives 200 local / 200 long-distance items; `lexical` is capped at 104 by the number of builtin test nouns
-(use `data.source: ud` with Universal Dependencies Swedish-Talbanken for more). Rough time per seed on a laptop: ~15-25 min.
-
-## Data: UD Swedish-Talbanken (default)
-
-`data.source: ud` builds the noun lexicon from UD_Swedish-Talbanken (CC BY-SA 4.0, commit
-`0185ae1fb4728ae501bf2a329b958e6c6acb9c8d`; files are bundled in `data/ud/`, or re-fetch with `bash scripts/download_ud.sh`).
-Kept: singular, non-genitive NOUN lemmas with one unambiguous Gender (Com/Neut), >= 5 occurrences, and a distinct definite form
-(513 nouns). The Swedish NLL regression text is 100 real UD dev sentences (`data/ppl_sentences.txt`, even lines dev / odd lines test).
-Caveats: Talbanken is 1970s-era text; many nouns are abstract (e.g. "systemet", "hälsan"), so template sentences can be semantically odd.
-The ablation/edit results use the same pipeline as before; only the nouns and the regression text changed, so numbers are not
-directly comparable with the builtin-lexicon run. The builtin lexicon remains available with `data.source: builtin`.
+I used Claude to help me identify the configurations to make, for coding/debugging assistance, and edits to the report. The choice of hypothesis, the decisions about the various experiments, and the final interpretations are mine.
