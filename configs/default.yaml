@@ -1,0 +1,31 @@
+# Main experiment on a Swedish-only GPT-2-small model (ungated). Pin `revision` before the real run.
+# To use GPT-SW3 126M instead (needs Hugging Face access): name: AI-Sweden-Models/gpt-sw3-126m
+seed: 1234
+out_dir: results/swe_gpt_wiki
+model:
+  name: flax-community/swe-gpt-wiki
+  revision: "c7c82ff9f0b9fba9da6278f67a2d594308b5ad9e"
+  batch_size: 32
+data:
+  source: ud              # UD_Swedish-Talbanken nouns (run `bash scripts/download_ud.sh` first); "builtin" = small hand list
+  ud_paths: [data/ud/sv_talbanken-ud-train.conllu, data/ud/sv_talbanken-ud-dev.conllu, data/ud/sv_talbanken-ud-test.conllu]
+  ud_min_count: 5
+  ppl_text_path: data/ppl_sentences.txt   # real UD sentences for the Swedish NLL check (null = built-in sentences)
+  n_dev: 60
+  n_test: 100
+  english_control: false  # off: this model is Swedish-only. Regression check = Swedish NLL + lexical/local accuracy
+edit:
+  target_type: long_distance
+  k: 5
+  alpha_up: 1.5
+  top_m: 30
+  penalty_lambda: 1.0
+  n_random: 20
+prompting:
+  n_shots: 8
+  shot_types: [lexical, local, long_distance]   # arm "prompt": mixed Swedish dev shots
+  also_target_only: true                         # arm "prompt_target": long-distance dev shots only
+finetune:
+  enabled: true
+  epochs: 10
+  seeds: [0, 1, 2]

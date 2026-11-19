@@ -1,0 +1,77 @@
+{
+  "cfg": {
+    "seed": 1234,
+    "out_dir": "results/swe_gpt_wiki",
+    "model": {
+      "name": "flax-community/swe-gpt-wiki",
+      "revision": "c7c82ff9f0b9fba9da6278f67a2d594308b5ad9e",
+      "device": "cpu",
+      "threads": null,
+      "batch_size": 32
+    },
+    "data": {
+      "source": "ud",
+      "ud_paths": [
+        "data/ud/sv_talbanken-ud-train.conllu",
+        "data/ud/sv_talbanken-ud-dev.conllu",
+        "data/ud/sv_talbanken-ud-test.conllu"
+      ],
+      "ud_min_count": 5,
+      "n_dev": 60,
+      "n_test": 100,
+      "ppl_text_path": "data/ppl_sentences.txt",
+      "english_control": false
+    },
+    "edit": {
+      "target_type": "long_distance",
+      "k": 5,
+      "alpha_up": 1.5,
+      "top_m": 30,
+      "penalty_lambda": 1.0,
+      "n_random": 20,
+      "random_mode": "uniform"
+    },
+    "prompting": {
+      "n_shots": 8,
+      "shot_types": [
+        "lexical",
+        "local",
+        "long_distance"
+      ],
+      "also_target_only": true
+    },
+    "finetune": {
+      "enabled": true,
+      "epochs": 10,
+      "lr": 0.0002,
+      "rank": 8,
+      "alpha": 16,
+      "batch_size": 8,
+      "seeds": [
+        0,
+        1,
+        2
+      ],
+      "max_steps": null
+    },
+    "stats": {
+      "n_boot": 2000
+    }
+  },
+  "cfg_hash": "db0a0623a459",
+  "python": "3.11.14",
+  "platform": "macOS-15.1.1-arm64-arm-64bit",
+  "torch": "2.14.0",
+  "transformers": "5.14.1",
+  "numpy": "1.26.4",
+  "git_sha": "a551eb9728823b753b1a6569e370ed988b895d86",
+  "threads": 4,
+  "seed": 1234,
+  "peft": "0.22.0",
+  "model": {
+    "name": "flax-community/swe-gpt-wiki",
+    "revision": "c7c82ff9f0b9fba9da6278f67a2d594308b5ad9e",
+    "commit_hash": "c7c82ff9f0b9fba9da6278f67a2d594308b5ad9e",
+    "n_params": 124439808
+  }
+}

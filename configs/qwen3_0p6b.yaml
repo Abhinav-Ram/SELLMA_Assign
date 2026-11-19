@@ -1,0 +1,28 @@
+# Second model: Qwen3-0.6B-Base (Apache 2.0, ungated, 119 languages). UNTESTED on the real model; slower
+# (28 layers x 16 heads = 448 heads). Pin `revision` (see README) before the final run.
+seed: 1234
+out_dir: results/qwen3_0p6b
+model:
+  name: Qwen/Qwen3-0.6B-Base
+  revision: null
+  batch_size: 16
+data:
+  source: builtin
+  n_dev: 60
+  n_test: 100
+  english_control: true   # Qwen knows English, so the extra control is meaningful here
+edit:
+  target_type: long_distance
+  k: 5
+  alpha_up: 1.5
+  top_m: 20
+  penalty_lambda: 1.0
+  n_random: 10
+prompting:
+  n_shots: 8
+  shot_types: [lexical, local, long_distance]
+  also_target_only: true
+finetune:
+  enabled: true
+  epochs: 10
+  seeds: [0, 1, 2]

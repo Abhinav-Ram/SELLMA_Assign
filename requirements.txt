@@ -1,0 +1,8 @@
+torch>=2.2
+transformers>=4.44
+peft>=0.11
+numpy>=1.24
+pyyaml>=6.0
+sentencepiece>=0.1.99   # needed by the GPT-SW3 tokenizer
+matplotlib>=3.7         # optional, for the plot
+pytest>=7.0

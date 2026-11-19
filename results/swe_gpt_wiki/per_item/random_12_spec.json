@@ -1,0 +1,29 @@
+{
+  "ops": [
+    {
+      "layer": 6,
+      "head": 11,
+      "alpha": 1.5
+    },
+    {
+      "layer": 10,
+      "head": 2,
+      "alpha": 0.0
+    },
+    {
+      "layer": 10,
+      "head": 0,
+      "alpha": 0.0
+    },
+    {
+      "layer": 10,
+      "head": 8,
+      "alpha": 0.0
+    },
+    {
+      "layer": 11,
+      "head": 9,
+      "alpha": 0.0
+    }
+  ]
+}

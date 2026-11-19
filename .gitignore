@@ -1,0 +1,33 @@
+# Python / tooling
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+.venv/
+.ipynb_checkpoints/
+
+# macOS / editors
+.DS_Store
+.idea/
+.vscode/
+
+# Secrets: never commit tokens
+.env
+*.token
+.huggingface/
+
+# Model weights and caches (downloaded, large)
+*.safetensors
+*.bin
+*.pt
+*.gguf
+.cache/
+
+# Zips and scratch
+*.zip
+tmp/
+
+# Results: keep only the reported run, ignore test/smoke runs
+results/*
+!results/swe_gpt_wiki/
+results/swe_gpt_wiki/**/*.tmp

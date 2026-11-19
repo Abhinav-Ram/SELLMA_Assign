@@ -1,0 +1,9 @@
+# Offline plumbing test with a tiny random model (results are meaningless, only the pipeline is tested).
+seed: 1
+out_dir: results/smoke
+model: {name: tiny-random, batch_size: 32}
+data: {source: builtin, n_dev: 20, n_test: 30}
+edit: {k: 3, top_m: 6, n_random: 4}
+prompting: {n_shots: 4}
+finetune: {enabled: true, epochs: 1, seeds: [0], max_steps: 3}
+stats: {n_boot: 200}
